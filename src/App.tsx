@@ -15,10 +15,10 @@ function App() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [selectedPalette, setSelectedPalette] = useState<'64' | '2'>('64');
   const [converted, setConverted] = useState(false);
-  // 拡大縮小率を string 型で管理。初期値は "100" で、ユーザーが入力欄を空にしても反映される
-  const [scale, setScale] = useState("100");
+  // 拡大縮小率を文字列として管理（初期値 "100"）
+  const [scale, setScale] = useState<string>("100");
 
-  // 64色パレット（各値は 0～255）
+  // 64色パレット（RGB 値は 0～255）
   const palette64: RGB[] = [
     { r: 0,   g: 0,   b: 0 },   { r: 0,   g: 0,   b: 85 },  { r: 0,   g: 0,   b: 170 }, { r: 0,   g: 0,   b: 255 },
     { r: 0,   g: 85,  b: 0 },   { r: 0,   g: 85,  b: 85 },  { r: 0,   g: 85,  b: 170 }, { r: 0,   g: 85,  b: 255 },
@@ -63,76 +63,51 @@ function App() {
     return nearest;
   };
 
-  // Floyd–Steinberg ダイザリングアルゴリズムによる画像変換
-  const ditherImage = (imageData: ImageData, palette: RGB[]): ImageData => {
+  // Ordered Dithering を実現するための変換処理
+  // 4x4 の Bayer 行列を利用し、各ピクセルに位置依存の閾値オフセットを適用してパレット内の最も近い色を選択
+  const orderedDitherImage = (imageData: ImageData, palette: RGB[]): ImageData => {
     const width = imageData.width;
     const height = imageData.height;
     const data = imageData.data;
-    // 誤差伝搬用に float 型の作業用配列を作成
-    const floatData = new Float32Array(data.length);
-    for (let i = 0; i < data.length; i++) {
-      floatData[i] = data[i];
-    }
+    
+    // 4x4 の Bayer 行列（値は 0～15）
+    const bayerMatrix = [
+      [0,  8,  2, 10],
+      [12, 4, 14, 6],
+      [3, 11, 1,  9],
+      [15, 7, 13, 5]
+    ];
+    
+    // この factor 値は閾値の影響度を調整します（適宜調整してください）
+    const factor = 50;
     
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const index = (y * width + x) * 4;
-        const oldR = floatData[index];
-        const oldG = floatData[index + 1];
-        const oldB = floatData[index + 2];
-
-        // 現在のピクセルの色に対し、パレット内で最も近い色を決定
-        const nearest = findNearestColor(oldR, oldG, oldB, palette);
-        const newR = nearest.r;
-        const newG = nearest.g;
-        const newB = nearest.b;
-
-        // 新しい色をセット
-        floatData[index] = newR;
-        floatData[index + 1] = newG;
-        floatData[index + 2] = newB;
-
-        // 誤差計算
-        const errR = oldR - newR;
-        const errG = oldG - newG;
-        const errB = oldB - newB;
-
-        // Floyd–Steinberg の係数に従い誤差を伝搬
-        if (x + 1 < width) {
-          const idx = (y * width + (x + 1)) * 4;
-          floatData[idx]     += errR * 7 / 16;
-          floatData[idx + 1] += errG * 7 / 16;
-          floatData[idx + 2] += errB * 7 / 16;
-        }
-        if (x - 1 >= 0 && y + 1 < height) {
-          const idx = ((y + 1) * width + (x - 1)) * 4;
-          floatData[idx]     += errR * 3 / 16;
-          floatData[idx + 1] += errG * 3 / 16;
-          floatData[idx + 2] += errB * 3 / 16;
-        }
-        if (y + 1 < height) {
-          const idx = ((y + 1) * width + x) * 4;
-          floatData[idx]     += errR * 5 / 16;
-          floatData[idx + 1] += errG * 5 / 16;
-          floatData[idx + 2] += errB * 5 / 16;
-        }
-        if (x + 1 < width && y + 1 < height) {
-          const idx = ((y + 1) * width + (x + 1)) * 4;
-          floatData[idx]     += errR * 1 / 16;
-          floatData[idx + 1] += errG * 1 / 16;
-          floatData[idx + 2] += errB * 1 / 16;
-        }
+        const idx = (y * width + x) * 4;
+        const oldR = data[idx];
+        const oldG = data[idx + 1];
+        const oldB = data[idx + 2];
+        
+        // Bayer 行列の値を正規化し、[-0.5, 0.5) の範囲に変換
+        const threshold = ((bayerMatrix[y % 4][x % 4] + 0.5) / 16) - 0.5;
+        
+        // 各チャンネルに閾値オフセットを適用
+        const adjustedR = Math.min(255, Math.max(0, oldR + threshold * factor));
+        const adjustedG = Math.min(255, Math.max(0, oldG + threshold * factor));
+        const adjustedB = Math.min(255, Math.max(0, oldB + threshold * factor));
+        
+        // 調整後の色に対してパレット内の最も近い色を選択
+        const nearest = findNearestColor(adjustedR, adjustedG, adjustedB, palette);
+        data[idx]     = nearest.r;
+        data[idx + 1] = nearest.g;
+        data[idx + 2] = nearest.b;
+        // アルファ値はそのまま
       }
-    }
-    
-    // 結果を元の imageData に反映（0～255 の範囲にクランプ）
-    for (let i = 0; i < data.length; i++) {
-      data[i] = Math.max(0, Math.min(255, floatData[i]));
     }
     return imageData;
   };
 
-  // ファイル読み込み処理を共通化
+  // 画像ファイルの読み込み処理を共通化
   const loadImageFile = (file: File) => {
     setImageFile(file);
     setConverted(false);
@@ -145,7 +120,6 @@ function App() {
         if (canvas) {
           const ctx = canvas.getContext('2d');
           if (ctx) {
-            // scale は string なので、Number(scale) で数値に変換
             const scaleFactor = Number(scale) / 100;
             canvas.width = Math.floor(img.width * scaleFactor);
             canvas.height = Math.floor(img.height * scaleFactor);
@@ -167,7 +141,7 @@ function App() {
     }
   };
 
-  // 画面上にドラッグ＆ドロップされたときの処理
+  // ドラッグ＆ドロップでファイルを受け取る
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
@@ -175,7 +149,7 @@ function App() {
     }
   };
 
-  // パレット選択変更時の処理
+  // パレット選択変更
   const handlePaletteChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     if (value === '64' || value === '2') {
@@ -183,13 +157,13 @@ function App() {
     }
   };
 
-  // 拡大縮小率入力変更時の処理
-  // ここでは event.target.value をそのまま文字列として setScale に渡す
+  // 拡大縮小入力（文字列）の変更
   const handleScaleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setScale(e.target.value);
   };
 
-  // 変換ボタン押下時：元画像から scale (%) に合わせたサイズで再描画し、ダイザリング処理
+  // 変換ボタン押下時の処理
+  // 元画像を scale (%) に合わせたサイズで再描画し、Ordered Dithering によるダイザリング処理を実施
   const handleConvert = () => {
     const canvas = canvasRef.current;
     if (!canvas || !originalImageRef.current) return;
@@ -203,17 +177,16 @@ function App() {
     ctx.drawImage(originalImageRef.current, 0, 0, newWidth, newHeight);
     const imageData = ctx.getImageData(0, 0, newWidth, newHeight);
     const palette = getPalette();
-    const convertedImageData = ditherImage(imageData, palette);
+    const convertedImageData = orderedDitherImage(imageData, palette);
     ctx.putImageData(convertedImageData, 0, 0);
     setConverted(true);
   };
 
-  // ダウンロードボタン押下時：Canvas の内容を PNG として出力
+  // ダウンロードボタン押下時の処理（アップロードしたファイル名を基に PNG ファイル名を設定）
   const handleDownload = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const link = document.createElement('a');
-    // 入力ファイル名から拡張子を除去して .png を付与
     const fileName =
       imageFile && imageFile.name
         ? imageFile.name.replace(/\.[^/.]+$/, '') + '.png'
@@ -224,10 +197,9 @@ function App() {
   };
 
   return (
-    // onDragOver と onDrop をトップレベルの div に設定
-    <div 
-      className="App" 
-      onDragOver={(e) => e.preventDefault()} 
+    <div
+      className="App"
+      onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
       style={{ minHeight: '100vh', padding: '20px' }}
     >
