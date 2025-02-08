@@ -10,17 +10,23 @@ type RGB = {
 type DitherAlgorithm = 'floyd' | 'ordered' | 'atkinson' | 'random';
 
 function App() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  // 元画像の保持用
   const originalImageRef = useRef<HTMLImageElement | null>(null);
-
+  // ファイル情報、パレット、スケールの状態
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [selectedPalette, setSelectedPalette] = useState<'64' | '2'>('64');
-  const [converted, setConverted] = useState(false);
   const [scale, setScale] = useState<string>("100");
-  const [selectedAlgorithm, setSelectedAlgorithm] = useState<DitherAlgorithm>('floyd');
 
-  // 64色パレット（RGB 値 0～255）
-  const palette64: RGB[] = [
+  // 4 つのアルゴリズムそれぞれの結果表示用 canvas の ref
+  const canvasRefs = {
+    floyd: useRef<HTMLCanvasElement>(null),
+    ordered: useRef<HTMLCanvasElement>(null),
+    atkinson: useRef<HTMLCanvasElement>(null),
+    random: useRef<HTMLCanvasElement>(null),
+  };
+
+  // 64 色パレットと黒白パレット
+  const fullPalette64: RGB[] = [
     { r: 0,   g: 0,   b: 0 },   { r: 0,   g: 0,   b: 85 },  { r: 0,   g: 0,   b: 170 }, { r: 0,   g: 0,   b: 255 },
     { r: 0,   g: 85,  b: 0 },   { r: 0,   g: 85,  b: 85 },  { r: 0,   g: 85,  b: 170 }, { r: 0,   g: 85,  b: 255 },
     { r: 0,   g: 170, b: 0 },   { r: 0,   g: 170, b: 85 },  { r: 0,   g: 170, b: 170 }, { r: 0,   g: 170, b: 255 },
@@ -38,18 +44,16 @@ function App() {
     { r: 255, g: 170, b: 0 },   { r: 255, g: 170, b: 85 },  { r: 255, g: 170, b: 170 }, { r: 255, g: 170, b: 255 },
     { r: 255, g: 255, b: 0 },   { r: 255, g: 255, b: 85 },  { r: 255, g: 255, b: 170 }, { r: 255, g: 255, b: 255 },
   ];
-
-  // 黒白パレット
   const palette2: RGB[] = [
     { r: 0, g: 0, b: 0 },
     { r: 255, g: 255, b: 255 }
   ];
 
   const getPalette = (): RGB[] => {
-    return selectedPalette === '64' ? palette64 : palette2;
+    return selectedPalette === '64' ? fullPalette64 : palette2;
   };
 
-  // パレット内の最も近い色を求める
+  // 共通の「最も近い色を探す」関数
   const findNearestColor = (r: number, g: number, b: number, palette: RGB[]): RGB => {
     let minDiff = Infinity;
     let nearest = palette[0];
@@ -120,7 +124,7 @@ function App() {
     return imageData;
   };
 
-  // Ordered Dithering（Bayer 行列使用）
+  // Ordered Dithering（Bayer 行列利用）
   const orderedDitherImage = (imageData: ImageData, palette: RGB[]): ImageData => {
     const width = imageData.width;
     const height = imageData.height;
@@ -221,12 +225,12 @@ function App() {
     return imageData;
   };
 
-  // Random ダイザリング（各ピクセルにランダムノイズを加算してから量子化）
+  // Random ダイザリング
   const randomDitherImage = (imageData: ImageData, palette: RGB[]): ImageData => {
     const width = imageData.width;
     const height = imageData.height;
     const data = imageData.data;
-    const noiseLevel = 32; // ±32 の範囲のノイズ
+    const noiseLevel = 32;
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const idx = (y * width + x) * 4;
@@ -243,25 +247,37 @@ function App() {
     return imageData;
   };
 
-  // 画像読み込み（URL.createObjectURL 使用）
+  const ditherFunctions: { [key in DitherAlgorithm]: (imageData: ImageData, palette: RGB[]) => ImageData } = {
+    floyd: floydSteinbergDitherImage,
+    ordered: orderedDitherImage,
+    atkinson: atkinsonDitherImage,
+    random: randomDitherImage,
+  };
+
+  const algorithms: DitherAlgorithm[] = ['floyd', 'ordered', 'atkinson', 'random'];
+
+  // 画像読み込み（URL.createObjectURL を利用）
   const loadImageFile = (file: File) => {
     setImageFile(file);
-    setConverted(false);
+    // 初回描画用に各 canvas に元画像を描画
     originalImageRef.current = null;
     const img = new Image();
     img.onload = function () {
       originalImageRef.current = img;
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const scaleFactor = Number(scale) / 100;
-          canvas.width = Math.floor(img.width * scaleFactor);
-          canvas.height = Math.floor(img.height * scaleFactor);
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const scaleFactor = Number(scale) / 100;
+      algorithms.forEach((alg) => {
+        const canvas = canvasRefs[alg].current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            canvas.width = Math.floor(img.width * scaleFactor);
+            canvas.height = Math.floor(img.height * scaleFactor);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          }
         }
-      }
-      URL.revokeObjectURL(img.src);
+      });
+      // ※URL.revokeObjectURL は画像の読み込みが完了した後に呼び出すと画像が無効になる場合があるため、今回はコメントアウトしています
+      // URL.revokeObjectURL(img.src);
     };
     img.src = URL.createObjectURL(file);
   };
@@ -301,55 +317,36 @@ function App() {
     setScale(e.target.value);
   };
 
-  const handleAlgorithmChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    if (value === 'floyd' || value === 'ordered' || value === 'atkinson' || value === 'random') {
-      setSelectedAlgorithm(value as DitherAlgorithm);
-    }
-  };
-
+  // 一括変換ボタン押下時：各アルゴリズムごとに再描画して変換を実施
   const handleConvert = () => {
-    const canvas = canvasRef.current;
-    if (!canvas || !originalImageRef.current) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const scaleFactor = Number(scale) / 100;
-    const newWidth = Math.floor(originalImageRef.current.width * scaleFactor);
-    const newHeight = Math.floor(originalImageRef.current.height * scaleFactor);
-    canvas.width = newWidth;
-    canvas.height = newHeight;
-    ctx.drawImage(originalImageRef.current, 0, 0, newWidth, newHeight);
-    const imageData = ctx.getImageData(0, 0, newWidth, newHeight);
+    if (!originalImageRef.current) return;
     const palette = getPalette();
-    let convertedImageData: ImageData;
-    switch (selectedAlgorithm) {
-      case 'floyd':
-        convertedImageData = floydSteinbergDitherImage(imageData, palette);
-        break;
-      case 'ordered':
-        convertedImageData = orderedDitherImage(imageData, palette);
-        break;
-      case 'atkinson':
-        convertedImageData = atkinsonDitherImage(imageData, palette);
-        break;
-      case 'random':
-        convertedImageData = randomDitherImage(imageData, palette);
-        break;
-      default:
-        convertedImageData = imageData;
-    }
-    ctx.putImageData(convertedImageData, 0, 0);
-    setConverted(true);
+    const scaleFactor = Number(scale) / 100;
+    algorithms.forEach((alg) => {
+      const canvas = canvasRefs[alg].current;
+      if (canvas && originalImageRef.current) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          canvas.width = Math.floor(originalImageRef.current.width * scaleFactor);
+          canvas.height = Math.floor(originalImageRef.current.height * scaleFactor);
+          ctx.drawImage(originalImageRef.current, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const ditheredImageData = ditherFunctions[alg](imageData, palette);
+          ctx.putImageData(ditheredImageData, 0, 0);
+        }
+      }
+    });
   };
 
-  const handleDownload = () => {
-    const canvas = canvasRef.current;
+  // 各 canvas ごとのダウンロード処理
+  const handleDownload = (alg: DitherAlgorithm) => {
+    const canvas = canvasRefs[alg].current;
     if (!canvas) return;
     const link = document.createElement('a');
     const fileName =
       imageFile && imageFile.name
-        ? imageFile.name.replace(/\.[^/.]+$/, '') + '.png'
-        : 'converted.png';
+        ? imageFile.name.replace(/\.[^/.]+$/, '') + `_${alg}.png`
+        : `converted_${alg}.png`;
     link.download = fileName;
     link.href = canvas.toDataURL('image/png');
     link.click();
@@ -362,7 +359,7 @@ function App() {
       onDrop={handleDrop}
       style={{ minHeight: '100vh', padding: '20px' }}
     >
-      <h1>画像ダイザリング変換ツール</h1>
+      <h1>画像ダイザリング一括変換ツール</h1>
       <div>
         <input type="file" accept="image/*" onChange={handleFileChange} />
       </div>
@@ -377,24 +374,21 @@ function App() {
         <label>拡大縮小 (%): </label>
         <input type="number" value={scale} onChange={handleScaleChange} />
       </div>
-      <div>
-        <label>ダイザリングアルゴリズム: </label>
-        <select value={selectedAlgorithm} onChange={handleAlgorithmChange}>
-          <option value="floyd">Floyd–Steinberg</option>
-          <option value="ordered">Ordered Dithering</option>
-          <option value="atkinson">Atkinson</option>
-          <option value="random">Random Dithering</option>
-        </select>
+      <div style={{ marginTop: '10px' }}>
+        <button onClick={handleConvert}>一括変換</button>
       </div>
-      <div>
-        <button onClick={handleConvert}>変換</button>
-      </div>
-      <div>
-        <canvas ref={canvasRef} style={{ border: '1px solid #ccc', marginTop: '10px' }}></canvas>
-      </div>
-      {converted && (
-        <div>
-          <button onClick={handleDownload}>ダウンロード</button>
+      {/* 画像が読み込まれたら各 canvas を常に表示 */}
+      {imageFile && (
+        <div style={{ display: 'flex', gap: '20px', marginTop: '20px' }}>
+          {algorithms.map((alg) => (
+            <div key={alg} style={{ textAlign: 'center' }}>
+              <p>{alg}</p>
+              <canvas ref={canvasRefs[alg]} style={{ border: '1px solid #ccc' }}></canvas>
+              <div>
+                <button onClick={() => handleDownload(alg)}>ダウンロード</button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
