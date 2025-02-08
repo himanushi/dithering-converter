@@ -15,8 +15,8 @@ function App() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [selectedPalette, setSelectedPalette] = useState<'64' | '2'>('64');
   const [converted, setConverted] = useState(false);
-  // 拡大縮小率（%）：初期は100%（そのままのサイズ）
-  const [scale, setScale] = useState(100);
+  // 拡大縮小率を string 型で管理。初期値は "100" で、ユーザーが入力欄を空にしても反映される
+  const [scale, setScale] = useState("100");
 
   // 64色パレット（各値は 0～255）
   const palette64: RGB[] = [
@@ -132,33 +132,46 @@ function App() {
     return imageData;
   };
 
-  // ファイル入力変更時：画像を読み込み、元画像を保持するとともに初期描画
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setImageFile(e.target.files[0]);
-      setConverted(false);
-      const reader = new FileReader();
-      reader.onload = function(event) {
-        const img = new Image();
-        img.onload = function() {
-          originalImageRef.current = img;
-          // 初回は現在の scale (%) に合わせて描画
-          const canvas = canvasRef.current;
-          if (canvas) {
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              const scaleFactor = scale / 100;
-              canvas.width = Math.floor(img.width * scaleFactor);
-              canvas.height = Math.floor(img.height * scaleFactor);
-              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            }
+  // ファイル読み込み処理を共通化
+  const loadImageFile = (file: File) => {
+    setImageFile(file);
+    setConverted(false);
+    const reader = new FileReader();
+    reader.onload = function(event) {
+      const img = new Image();
+      img.onload = function() {
+        originalImageRef.current = img;
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            // scale は string なので、Number(scale) で数値に変換
+            const scaleFactor = Number(scale) / 100;
+            canvas.width = Math.floor(img.width * scaleFactor);
+            canvas.height = Math.floor(img.height * scaleFactor);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           }
-        };
-        if (event.target && event.target.result) {
-          img.src = event.target.result as string;
         }
       };
-      reader.readAsDataURL(e.target.files[0]);
+      if (event.target && event.target.result) {
+        img.src = event.target.result as string;
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // input の onChange イベント
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      loadImageFile(e.target.files[0]);
+    }
+  };
+
+  // 画面上にドラッグ＆ドロップされたときの処理
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      loadImageFile(e.dataTransfer.files[0]);
     }
   };
 
@@ -171,8 +184,9 @@ function App() {
   };
 
   // 拡大縮小率入力変更時の処理
+  // ここでは event.target.value をそのまま文字列として setScale に渡す
   const handleScaleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setScale(Number(e.target.value));
+    setScale(e.target.value);
   };
 
   // 変換ボタン押下時：元画像から scale (%) に合わせたサイズで再描画し、ダイザリング処理
@@ -181,7 +195,7 @@ function App() {
     if (!canvas || !originalImageRef.current) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const scaleFactor = scale / 100;
+    const scaleFactor = Number(scale) / 100;
     const newWidth = Math.floor(originalImageRef.current.width * scaleFactor);
     const newHeight = Math.floor(originalImageRef.current.height * scaleFactor);
     canvas.width = newWidth;
@@ -194,18 +208,29 @@ function App() {
     setConverted(true);
   };
 
-  // ダウンロードボタン押下時：Canvas の内容を PNG として出力。ファイル名は入力ファイル名を使用
+  // ダウンロードボタン押下時：Canvas の内容を PNG として出力
   const handleDownload = () => {
-    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const link = document.createElement('a');
-    const downloadFileName = imageFile ? imageFile.name : 'converted.png';
-    link.download = downloadFileName;
-    link.href = canvasRef.current.toDataURL('image/png');
+    // 入力ファイル名から拡張子を除去して .png を付与
+    const fileName =
+      imageFile && imageFile.name
+        ? imageFile.name.replace(/\.[^/.]+$/, '') + '.png'
+        : 'converted.png';
+    link.download = fileName;
+    link.href = canvas.toDataURL('image/png');
     link.click();
   };
 
   return (
-    <div className="App">
+    // onDragOver と onDrop をトップレベルの div に設定
+    <div 
+      className="App" 
+      onDragOver={(e) => e.preventDefault()} 
+      onDrop={handleDrop}
+      style={{ minHeight: '100vh', padding: '20px' }}
+    >
       <h1>画像ダイザリング変換ツール</h1>
       <div>
         <input type="file" accept="image/*" onChange={handleFileChange} />
