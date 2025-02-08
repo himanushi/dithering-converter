@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import './App.css';
 
 type RGB = {
@@ -78,7 +78,7 @@ function App() {
       [15, 7, 13, 5]
     ];
     
-    // この factor 値は閾値の影響度を調整します（適宜調整してください）
+    // factor 値で閾値オフセットの影響度を調整（必要に応じて調整してください）
     const factor = 50;
     
     for (let y = 0; y < height; y++) {
@@ -96,7 +96,7 @@ function App() {
         const adjustedG = Math.min(255, Math.max(0, oldG + threshold * factor));
         const adjustedB = Math.min(255, Math.max(0, oldB + threshold * factor));
         
-        // 調整後の色に対してパレット内の最も近い色を選択
+        // 調整後の色からパレット内の最も近い色を選択
         const nearest = findNearestColor(adjustedR, adjustedG, adjustedB, palette);
         data[idx]     = nearest.r;
         data[idx + 1] = nearest.g;
@@ -107,7 +107,7 @@ function App() {
     return imageData;
   };
 
-  // 画像ファイルの読み込み処理を共通化
+  // 画像ファイルの読み込み処理（input とドロップの両方で使用）
   const loadImageFile = (file: File) => {
     setImageFile(file);
     setConverted(false);
@@ -141,13 +141,29 @@ function App() {
     }
   };
 
-  // ドラッグ＆ドロップでファイルを受け取る
+  // ドラッグ＆ドロップイベント
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       loadImageFile(e.dataTransfer.files[0]);
     }
   };
+
+  // document 全体にもドラッグ＆ドロップの既定動作をキャンセルするリスナーを設定
+  useEffect(() => {
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    const handleDropDocument = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    document.addEventListener('dragover', handleDragOver);
+    document.addEventListener('drop', handleDropDocument);
+    return () => {
+      document.removeEventListener('dragover', handleDragOver);
+      document.removeEventListener('drop', handleDropDocument);
+    };
+  }, []);
 
   // パレット選択変更
   const handlePaletteChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -182,7 +198,7 @@ function App() {
     setConverted(true);
   };
 
-  // ダウンロードボタン押下時の処理（アップロードしたファイル名を基に PNG ファイル名を設定）
+  // ダウンロードボタン押下時の処理
   const handleDownload = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
