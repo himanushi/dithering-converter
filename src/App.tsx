@@ -12,10 +12,12 @@ type DitherAlgorithm = 'floyd' | 'ordered' | 'atkinson' | 'random';
 function App() {
   // 元画像の保持用
   const originalImageRef = useRef<HTMLImageElement | null>(null);
-  // ファイル情報、パレット、スケールの状態
+  // ファイル情報、パレット、サイズ指定の状態
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [selectedPalette, setSelectedPalette] = useState<'64' | '2'>('64');
-  const [scale, setScale] = useState<string>("100");
+  // 幅(px)と高さ(px)の指定（空の場合は元サイズを使用）
+  const [targetWidth, setTargetWidth] = useState<string>("");
+  const [targetHeight, setTargetHeight] = useState<string>("");
 
   // 4 つのアルゴリズムそれぞれの結果表示用 canvas の ref
   const canvasRefs = {
@@ -25,7 +27,7 @@ function App() {
     random: useRef<HTMLCanvasElement>(null),
   };
 
-  // 64 色パレットと黒白パレット
+  // 64色パレットと黒白パレット
   const fullPalette64: RGB[] = [
     { r: 0,   g: 0,   b: 0 },   { r: 0,   g: 0,   b: 85 },  { r: 0,   g: 0,   b: 170 }, { r: 0,   g: 0,   b: 255 },
     { r: 0,   g: 85,  b: 0 },   { r: 0,   g: 85,  b: 85 },  { r: 0,   g: 85,  b: 170 }, { r: 0,   g: 85,  b: 255 },
@@ -259,25 +261,25 @@ function App() {
   // 画像読み込み（URL.createObjectURL を利用）
   const loadImageFile = (file: File) => {
     setImageFile(file);
-    // 初回描画用に各 canvas に元画像を描画
     originalImageRef.current = null;
     const img = new Image();
     img.onload = function () {
       originalImageRef.current = img;
-      const scaleFactor = Number(scale) / 100;
+      // 幅と高さは、指定があればそれを、なければ元画像のサイズを使用
+      const w = targetWidth ? Number(targetWidth) : img.width;
+      const h = targetHeight ? Number(targetHeight) : img.height;
       algorithms.forEach((alg) => {
         const canvas = canvasRefs[alg].current;
         if (canvas) {
           const ctx = canvas.getContext('2d');
           if (ctx) {
-            canvas.width = Math.floor(img.width * scaleFactor);
-            canvas.height = Math.floor(img.height * scaleFactor);
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            canvas.width = w;
+            canvas.height = h;
+            ctx.drawImage(img, 0, 0, w, h);
           }
         }
       });
-      // ※URL.revokeObjectURL は画像の読み込みが完了した後に呼び出すと画像が無効になる場合があるため、今回はコメントアウトしています
-      // URL.revokeObjectURL(img.src);
+      // ※URL.revokeObjectURL(img.src); 必要に応じて解放してください
     };
     img.src = URL.createObjectURL(file);
   };
@@ -313,24 +315,30 @@ function App() {
     }
   };
 
-  const handleScaleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setScale(e.target.value);
+  const handleWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTargetWidth(e.target.value);
   };
 
-  // 一括変換ボタン押下時：各アルゴリズムごとに再描画して変換を実施
+  const handleHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTargetHeight(e.target.value);
+  };
+
+  // 一括変換ボタン押下時：各アルゴリズムごとに指定サイズで再描画し、変換処理を実施
   const handleConvert = () => {
     if (!originalImageRef.current) return;
     const palette = getPalette();
-    const scaleFactor = Number(scale) / 100;
+    const img = originalImageRef.current;
+    const w = targetWidth ? Number(targetWidth) : img.width;
+    const h = targetHeight ? Number(targetHeight) : img.height;
     algorithms.forEach((alg) => {
       const canvas = canvasRefs[alg].current;
-      if (canvas && originalImageRef.current) {
+      if (canvas && img) {
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          canvas.width = Math.floor(originalImageRef.current.width * scaleFactor);
-          canvas.height = Math.floor(originalImageRef.current.height * scaleFactor);
-          ctx.drawImage(originalImageRef.current, 0, 0, canvas.width, canvas.height);
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          canvas.width = w;
+          canvas.height = h;
+          ctx.drawImage(img, 0, 0, w, h);
+          const imageData = ctx.getImageData(0, 0, w, h);
           const ditheredImageData = ditherFunctions[alg](imageData, palette);
           ctx.putImageData(ditheredImageData, 0, 0);
         }
@@ -338,15 +346,15 @@ function App() {
     });
   };
 
-  // 各 canvas ごとのダウンロード処理
+  // 各 canvas ごとにダウンロード（ファイル名はアップロードしたファイル名と同じ）
   const handleDownload = (alg: DitherAlgorithm) => {
     const canvas = canvasRefs[alg].current;
     if (!canvas) return;
     const link = document.createElement('a');
     const fileName =
       imageFile && imageFile.name
-        ? imageFile.name.replace(/\.[^/.]+$/, '') + `_${alg}.png`
-        : `converted_${alg}.png`;
+        ? imageFile.name.replace(/\.[^/.]+$/, '') + '.png'
+        : 'converted.png';
     link.download = fileName;
     link.href = canvas.toDataURL('image/png');
     link.click();
@@ -371,13 +379,16 @@ function App() {
         </select>
       </div>
       <div>
-        <label>拡大縮小 (%): </label>
-        <input type="number" value={scale} onChange={handleScaleChange} />
+        <label>幅 (px): </label>
+        <input type="number" value={targetWidth} onChange={handleWidthChange} placeholder="例: 260" />
+      </div>
+      <div>
+        <label>高さ (px): </label>
+        <input type="number" value={targetHeight} onChange={handleHeightChange} placeholder="例: 260" />
       </div>
       <div style={{ marginTop: '10px' }}>
         <button onClick={handleConvert}>一括変換</button>
       </div>
-      {/* 画像が読み込まれたら各 canvas を常に表示 */}
       {imageFile && (
         <div style={{ display: 'flex', gap: '20px', marginTop: '20px' }}>
           {algorithms.map((alg) => (
