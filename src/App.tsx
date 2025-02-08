@@ -8,14 +8,19 @@ type RGB = {
 };
 
 type DitherAlgorithm = 'floyd' | 'ordered' | 'atkinson' | 'random';
+type ScaleMode = 'percent' | 'pixel';
 
 function App() {
   // 元画像の保持用
   const originalImageRef = useRef<HTMLImageElement | null>(null);
-  // ファイル情報、パレット、サイズ指定の状態
+  // ファイル情報、パレット、スケール指定の状態
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [selectedPalette, setSelectedPalette] = useState<'64' | '2'>('64');
-  // 幅(px)と高さ(px)の指定（空の場合は元サイズを使用）
+  // スケールモード：'percent'（%指定）か 'pixel'（px指定）
+  const [scaleMode, setScaleMode] = useState<ScaleMode>('percent');
+  // percent 指定の場合の値（例: "100"）
+  const [scalePercent, setScalePercent] = useState<string>("100");
+  // pixel 指定の場合の幅・高さ（空の場合は元サイズを使用）
   const [targetWidth, setTargetWidth] = useState<string>("");
   const [targetHeight, setTargetHeight] = useState<string>("");
 
@@ -27,7 +32,7 @@ function App() {
     random: useRef<HTMLCanvasElement>(null),
   };
 
-  // 64色パレットと黒白パレット
+  // 64 色パレットと黒白パレット
   const fullPalette64: RGB[] = [
     { r: 0,   g: 0,   b: 0 },   { r: 0,   g: 0,   b: 85 },  { r: 0,   g: 0,   b: 170 }, { r: 0,   g: 0,   b: 255 },
     { r: 0,   g: 85,  b: 0 },   { r: 0,   g: 85,  b: 85 },  { r: 0,   g: 85,  b: 170 }, { r: 0,   g: 85,  b: 255 },
@@ -258,16 +263,22 @@ function App() {
 
   const algorithms: DitherAlgorithm[] = ['floyd', 'ordered', 'atkinson', 'random'];
 
-  // 画像読み込み（URL.createObjectURL を利用）
+  // 画像読み込み（URL.createObjectURL 使用）
   const loadImageFile = (file: File) => {
     setImageFile(file);
     originalImageRef.current = null;
     const img = new Image();
     img.onload = function () {
       originalImageRef.current = img;
-      // 幅と高さは、指定があればそれを、なければ元画像のサイズを使用
-      const w = targetWidth ? Number(targetWidth) : img.width;
-      const h = targetHeight ? Number(targetHeight) : img.height;
+      // サイズ指定：scaleMode に応じて計算
+      let w: number, h: number;
+      if (scaleMode === 'percent') {
+        w = img.width * (Number(scalePercent) / 100);
+        h = img.height * (Number(scalePercent) / 100);
+      } else {
+        w = targetWidth ? Number(targetWidth) : img.width;
+        h = targetHeight ? Number(targetHeight) : img.height;
+      }
       algorithms.forEach((alg) => {
         const canvas = canvasRefs[alg].current;
         if (canvas) {
@@ -279,7 +290,7 @@ function App() {
           }
         }
       });
-      // ※URL.revokeObjectURL(img.src); 必要に応じて解放してください
+      // ※必要に応じて URL.revokeObjectURL(img.src) を呼び出してください
     };
     img.src = URL.createObjectURL(file);
   };
@@ -315,21 +326,37 @@ function App() {
     }
   };
 
+  // スケールモードの切り替え
+  const handleScaleModeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setScaleMode(e.target.value as ScaleMode);
+  };
+
+  // % 指定用の入力変更
+  const handleScalePercentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setScalePercent(e.target.value);
+  };
+
+  // px 指定用の入力変更
   const handleWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTargetWidth(e.target.value);
   };
-
   const handleHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTargetHeight(e.target.value);
   };
 
-  // 一括変換ボタン押下時：各アルゴリズムごとに指定サイズで再描画し、変換処理を実施
+  // 一括変換ボタン押下時：各アルゴリズムで指定サイズに合わせて再描画＆変換
   const handleConvert = () => {
     if (!originalImageRef.current) return;
     const palette = getPalette();
+    let w: number, h: number;
     const img = originalImageRef.current;
-    const w = targetWidth ? Number(targetWidth) : img.width;
-    const h = targetHeight ? Number(targetHeight) : img.height;
+    if (scaleMode === 'percent') {
+      w = img.width * (Number(scalePercent) / 100);
+      h = img.height * (Number(scalePercent) / 100);
+    } else {
+      w = targetWidth ? Number(targetWidth) : img.width;
+      h = targetHeight ? Number(targetHeight) : img.height;
+    }
     algorithms.forEach((alg) => {
       const canvas = canvasRefs[alg].current;
       if (canvas && img) {
@@ -346,7 +373,7 @@ function App() {
     });
   };
 
-  // 各 canvas ごとにダウンロード（ファイル名はアップロードしたファイル名と同じ）
+  // 各 canvas ごとのダウンロード（ファイル名はアップロードファイル名と同じ）
   const handleDownload = (alg: DitherAlgorithm) => {
     const canvas = canvasRefs[alg].current;
     if (!canvas) return;
@@ -378,14 +405,42 @@ function App() {
           <option value="2">2色 (黒白)</option>
         </select>
       </div>
-      <div>
-        <label>幅 (px): </label>
-        <input type="number" value={targetWidth} onChange={handleWidthChange} placeholder="例: 260" />
+      <div style={{ marginTop: '10px' }}>
+        <p>サイズ指定モード：</p>
+        <label>
+          <input
+            type="radio"
+            name="scaleMode"
+            value="percent"
+            checked={scaleMode === 'percent'}
+            onChange={handleScaleModeChange}
+          />
+          拡大縮小 (%)
+        </label>
+        <label style={{ marginLeft: '20px' }}>
+          <input
+            type="radio"
+            name="scaleMode"
+            value="pixel"
+            checked={scaleMode === 'pixel'}
+            onChange={handleScaleModeChange}
+          />
+          幅・高さ (px)
+        </label>
       </div>
-      <div>
-        <label>高さ (px): </label>
-        <input type="number" value={targetHeight} onChange={handleHeightChange} placeholder="例: 260" />
-      </div>
+      {scaleMode === 'percent' ? (
+        <div>
+          <label>拡大縮小 (%): </label>
+          <input type="number" value={scalePercent} onChange={handleScalePercentChange} placeholder="例: 100" />
+        </div>
+      ) : (
+        <div>
+          <label>幅 (px): </label>
+          <input type="number" value={targetWidth} onChange={handleWidthChange} placeholder="例: 260" />
+          <label style={{ marginLeft: '10px' }}>高さ (px): </label>
+          <input type="number" value={targetHeight} onChange={handleHeightChange} placeholder="例: 260" />
+        </div>
+      )}
       <div style={{ marginTop: '10px' }}>
         <button onClick={handleConvert}>一括変換</button>
       </div>
