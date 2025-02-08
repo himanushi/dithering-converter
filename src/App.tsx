@@ -7,18 +7,19 @@ type RGB = {
   b: number;
 };
 
+type DitherAlgorithm = 'floyd' | 'ordered' | 'atkinson' | 'random';
+
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // アップロードされた元画像を保持するための ref
   const originalImageRef = useRef<HTMLImageElement | null>(null);
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [selectedPalette, setSelectedPalette] = useState<'64' | '2'>('64');
   const [converted, setConverted] = useState(false);
-  // 拡大縮小率を文字列として管理（初期値 "100"）
   const [scale, setScale] = useState<string>("100");
+  const [selectedAlgorithm, setSelectedAlgorithm] = useState<DitherAlgorithm>('floyd');
 
-  // 64色パレット（RGB 値は 0～255）
+  // 64色パレット（RGB 値 0～255）
   const palette64: RGB[] = [
     { r: 0,   g: 0,   b: 0 },   { r: 0,   g: 0,   b: 85 },  { r: 0,   g: 0,   b: 170 }, { r: 0,   g: 0,   b: 255 },
     { r: 0,   g: 85,  b: 0 },   { r: 0,   g: 85,  b: 85 },  { r: 0,   g: 85,  b: 170 }, { r: 0,   g: 85,  b: 255 },
@@ -44,12 +45,11 @@ function App() {
     { r: 255, g: 255, b: 255 }
   ];
 
-  // 選択されたパレットを返す
   const getPalette = (): RGB[] => {
     return selectedPalette === '64' ? palette64 : palette2;
   };
 
-  // 指定した色に対して、パレット内で最も近い色を返す
+  // パレット内の最も近い色を求める
   const findNearestColor = (r: number, g: number, b: number, palette: RGB[]): RGB => {
     let minDiff = Infinity;
     let nearest = palette[0];
@@ -63,85 +63,215 @@ function App() {
     return nearest;
   };
 
-  // Ordered Dithering を実現するための変換処理
-  // 4x4 の Bayer 行列を利用し、各ピクセルに位置依存の閾値オフセットを適用してパレット内の最も近い色を選択
+  // Floyd–Steinberg ダイザリング
+  const floydSteinbergDitherImage = (imageData: ImageData, palette: RGB[]): ImageData => {
+    const width = imageData.width;
+    const height = imageData.height;
+    const data = imageData.data;
+    const floatData = new Float32Array(data.length);
+    for (let i = 0; i < data.length; i++) {
+      floatData[i] = data[i];
+    }
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        const oldR = floatData[idx];
+        const oldG = floatData[idx + 1];
+        const oldB = floatData[idx + 2];
+        const nearest = findNearestColor(oldR, oldG, oldB, palette);
+        const newR = nearest.r;
+        const newG = nearest.g;
+        const newB = nearest.b;
+        floatData[idx] = newR;
+        floatData[idx + 1] = newG;
+        floatData[idx + 2] = newB;
+        const errR = oldR - newR;
+        const errG = oldG - newG;
+        const errB = oldB - newB;
+        if (x + 1 < width) {
+          const i1 = (y * width + (x + 1)) * 4;
+          floatData[i1] += errR * 7 / 16;
+          floatData[i1 + 1] += errG * 7 / 16;
+          floatData[i1 + 2] += errB * 7 / 16;
+        }
+        if (x - 1 >= 0 && y + 1 < height) {
+          const i1 = ((y + 1) * width + (x - 1)) * 4;
+          floatData[i1] += errR * 3 / 16;
+          floatData[i1 + 1] += errG * 3 / 16;
+          floatData[i1 + 2] += errB * 3 / 16;
+        }
+        if (y + 1 < height) {
+          const i1 = ((y + 1) * width + x) * 4;
+          floatData[i1] += errR * 5 / 16;
+          floatData[i1 + 1] += errG * 5 / 16;
+          floatData[i1 + 2] += errB * 5 / 16;
+        }
+        if (x + 1 < width && y + 1 < height) {
+          const i1 = ((y + 1) * width + (x + 1)) * 4;
+          floatData[i1] += errR * 1 / 16;
+          floatData[i1 + 1] += errG * 1 / 16;
+          floatData[i1 + 2] += errB * 1 / 16;
+        }
+      }
+    }
+    for (let i = 0; i < data.length; i++) {
+      data[i] = Math.max(0, Math.min(255, floatData[i]));
+    }
+    return imageData;
+  };
+
+  // Ordered Dithering（Bayer 行列使用）
   const orderedDitherImage = (imageData: ImageData, palette: RGB[]): ImageData => {
     const width = imageData.width;
     const height = imageData.height;
     const data = imageData.data;
-    
-    // 4x4 の Bayer 行列（値は 0～15）
     const bayerMatrix = [
       [0,  8,  2, 10],
       [12, 4, 14, 6],
       [3, 11, 1,  9],
       [15, 7, 13, 5]
     ];
-    
-    // factor 値で閾値オフセットの影響度を調整（必要に応じて調整してください）
     const factor = 50;
-    
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const idx = (y * width + x) * 4;
         const oldR = data[idx];
         const oldG = data[idx + 1];
         const oldB = data[idx + 2];
-        
-        // Bayer 行列の値を正規化し、[-0.5, 0.5) の範囲に変換
         const threshold = ((bayerMatrix[y % 4][x % 4] + 0.5) / 16) - 0.5;
-        
-        // 各チャンネルに閾値オフセットを適用
         const adjustedR = Math.min(255, Math.max(0, oldR + threshold * factor));
         const adjustedG = Math.min(255, Math.max(0, oldG + threshold * factor));
         const adjustedB = Math.min(255, Math.max(0, oldB + threshold * factor));
-        
-        // 調整後の色からパレット内の最も近い色を選択
         const nearest = findNearestColor(adjustedR, adjustedG, adjustedB, palette);
-        data[idx]     = nearest.r;
+        data[idx] = nearest.r;
         data[idx + 1] = nearest.g;
         data[idx + 2] = nearest.b;
-        // アルファ値はそのまま
       }
     }
     return imageData;
   };
 
-  // 画像ファイルの読み込み処理（input とドロップの両方で使用）
+  // Atkinson ダイザリング
+  const atkinsonDitherImage = (imageData: ImageData, palette: RGB[]): ImageData => {
+    const width = imageData.width;
+    const height = imageData.height;
+    const data = imageData.data;
+    const floatData = new Float32Array(data.length);
+    for (let i = 0; i < data.length; i++) {
+      floatData[i] = data[i];
+    }
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        const oldR = floatData[idx];
+        const oldG = floatData[idx + 1];
+        const oldB = floatData[idx + 2];
+        const nearest = findNearestColor(oldR, oldG, oldB, palette);
+        const newR = nearest.r;
+        const newG = nearest.g;
+        const newB = nearest.b;
+        floatData[idx] = newR;
+        floatData[idx + 1] = newG;
+        floatData[idx + 2] = newB;
+        const errR = oldR - newR;
+        const errG = oldG - newG;
+        const errB = oldB - newB;
+        const factor = 1 / 8;
+        if (x + 1 < width) {
+          const i1 = (y * width + (x + 1)) * 4;
+          floatData[i1] += errR * factor;
+          floatData[i1 + 1] += errG * factor;
+          floatData[i1 + 2] += errB * factor;
+        }
+        if (x + 2 < width) {
+          const i1 = (y * width + (x + 2)) * 4;
+          floatData[i1] += errR * factor;
+          floatData[i1 + 1] += errG * factor;
+          floatData[i1 + 2] += errB * factor;
+        }
+        if (x - 1 >= 0 && y + 1 < height) {
+          const i1 = ((y + 1) * width + (x - 1)) * 4;
+          floatData[i1] += errR * factor;
+          floatData[i1 + 1] += errG * factor;
+          floatData[i1 + 2] += errB * factor;
+        }
+        if (y + 1 < height) {
+          const i1 = ((y + 1) * width + x) * 4;
+          floatData[i1] += errR * factor;
+          floatData[i1 + 1] += errG * factor;
+          floatData[i1 + 2] += errB * factor;
+        }
+        if (x + 1 < width && y + 1 < height) {
+          const i1 = ((y + 1) * width + (x + 1)) * 4;
+          floatData[i1] += errR * factor;
+          floatData[i1 + 1] += errG * factor;
+          floatData[i1 + 2] += errB * factor;
+        }
+        if (y + 2 < height) {
+          const i1 = ((y + 2) * width + x) * 4;
+          floatData[i1] += errR * factor;
+          floatData[i1 + 1] += errG * factor;
+          floatData[i1 + 2] += errB * factor;
+        }
+      }
+    }
+    for (let i = 0; i < data.length; i++) {
+      data[i] = Math.max(0, Math.min(255, floatData[i]));
+    }
+    return imageData;
+  };
+
+  // Random ダイザリング（各ピクセルにランダムノイズを加算してから量子化）
+  const randomDitherImage = (imageData: ImageData, palette: RGB[]): ImageData => {
+    const width = imageData.width;
+    const height = imageData.height;
+    const data = imageData.data;
+    const noiseLevel = 32; // ±32 の範囲のノイズ
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4;
+        const noise = (Math.random() - 0.5) * noiseLevel;
+        const newR = data[idx] + noise;
+        const newG = data[idx + 1] + noise;
+        const newB = data[idx + 2] + noise;
+        const nearest = findNearestColor(newR, newG, newB, palette);
+        data[idx] = nearest.r;
+        data[idx + 1] = nearest.g;
+        data[idx + 2] = nearest.b;
+      }
+    }
+    return imageData;
+  };
+
+  // 画像読み込み（URL.createObjectURL 使用）
   const loadImageFile = (file: File) => {
     setImageFile(file);
     setConverted(false);
-    const reader = new FileReader();
-    reader.onload = function(event) {
-      const img = new Image();
-      img.onload = function() {
-        originalImageRef.current = img;
-        const canvas = canvasRef.current;
-        if (canvas) {
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            const scaleFactor = Number(scale) / 100;
-            canvas.width = Math.floor(img.width * scaleFactor);
-            canvas.height = Math.floor(img.height * scaleFactor);
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          }
+    originalImageRef.current = null;
+    const img = new Image();
+    img.onload = function () {
+      originalImageRef.current = img;
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const scaleFactor = Number(scale) / 100;
+          canvas.width = Math.floor(img.width * scaleFactor);
+          canvas.height = Math.floor(img.height * scaleFactor);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         }
-      };
-      if (event.target && event.target.result) {
-        img.src = event.target.result as string;
       }
+      URL.revokeObjectURL(img.src);
     };
-    reader.readAsDataURL(file);
+    img.src = URL.createObjectURL(file);
   };
 
-  // input の onChange イベント
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       loadImageFile(e.target.files[0]);
     }
   };
 
-  // ドラッグ＆ドロップイベント
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
@@ -149,14 +279,9 @@ function App() {
     }
   };
 
-  // document 全体にもドラッグ＆ドロップの既定動作をキャンセルするリスナーを設定
   useEffect(() => {
-    const handleDragOver = (e: DragEvent) => {
-      e.preventDefault();
-    };
-    const handleDropDocument = (e: DragEvent) => {
-      e.preventDefault();
-    };
+    const handleDragOver = (e: DragEvent) => { e.preventDefault(); };
+    const handleDropDocument = (e: DragEvent) => { e.preventDefault(); };
     document.addEventListener('dragover', handleDragOver);
     document.addEventListener('drop', handleDropDocument);
     return () => {
@@ -165,7 +290,6 @@ function App() {
     };
   }, []);
 
-  // パレット選択変更
   const handlePaletteChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     if (value === '64' || value === '2') {
@@ -173,13 +297,17 @@ function App() {
     }
   };
 
-  // 拡大縮小入力（文字列）の変更
   const handleScaleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setScale(e.target.value);
   };
 
-  // 変換ボタン押下時の処理
-  // 元画像を scale (%) に合わせたサイズで再描画し、Ordered Dithering によるダイザリング処理を実施
+  const handleAlgorithmChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    if (value === 'floyd' || value === 'ordered' || value === 'atkinson' || value === 'random') {
+      setSelectedAlgorithm(value as DitherAlgorithm);
+    }
+  };
+
   const handleConvert = () => {
     const canvas = canvasRef.current;
     if (!canvas || !originalImageRef.current) return;
@@ -193,12 +321,27 @@ function App() {
     ctx.drawImage(originalImageRef.current, 0, 0, newWidth, newHeight);
     const imageData = ctx.getImageData(0, 0, newWidth, newHeight);
     const palette = getPalette();
-    const convertedImageData = orderedDitherImage(imageData, palette);
+    let convertedImageData: ImageData;
+    switch (selectedAlgorithm) {
+      case 'floyd':
+        convertedImageData = floydSteinbergDitherImage(imageData, palette);
+        break;
+      case 'ordered':
+        convertedImageData = orderedDitherImage(imageData, palette);
+        break;
+      case 'atkinson':
+        convertedImageData = atkinsonDitherImage(imageData, palette);
+        break;
+      case 'random':
+        convertedImageData = randomDitherImage(imageData, palette);
+        break;
+      default:
+        convertedImageData = imageData;
+    }
     ctx.putImageData(convertedImageData, 0, 0);
     setConverted(true);
   };
 
-  // ダウンロードボタン押下時の処理
   const handleDownload = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -233,6 +376,15 @@ function App() {
       <div>
         <label>拡大縮小 (%): </label>
         <input type="number" value={scale} onChange={handleScaleChange} />
+      </div>
+      <div>
+        <label>ダイザリングアルゴリズム: </label>
+        <select value={selectedAlgorithm} onChange={handleAlgorithmChange}>
+          <option value="floyd">Floyd–Steinberg</option>
+          <option value="ordered">Ordered Dithering</option>
+          <option value="atkinson">Atkinson</option>
+          <option value="random">Random Dithering</option>
+        </select>
       </div>
       <div>
         <button onClick={handleConvert}>変換</button>
