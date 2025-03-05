@@ -1,50 +1,73 @@
-# React + TypeScript + Vite
+# Image Dithering Batch Converter
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A React-based web application that allows users to apply various dithering algorithms to images with different color palettes and sizing options.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Multiple Dithering Algorithms:**
+  - Floyd-Steinberg: Error diffusion dithering with classic 16-part error distribution
+  - Ordered: Uses Bayer matrix for pattern-based dithering
+  - Atkinson: Error diffusion dithering with 8-part error distribution
+  - Random: Adds random noise before color quantization
 
-## Expanding the ESLint configuration
+- **Color Palette Options:**
+  - 64 Colors: Full RGB color palette (4×4×4 cube)
+  - 16 Colors: Standard 16-color palette
+  - 8 Colors: Basic RGB color palette
+  - 2 Colors: Black and white
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+- **Image Size Controls:**
+  - Scale by percentage
+  - Set exact pixel dimensions
+  - Auto-scaling calculator based on target dimensions
 
-- Configure the top-level `parserOptions` property like this:
+- **User Interface:**
+  - Drag and drop image upload
+  - File picker support
+  - Side-by-side algorithm comparison
+  - Individual result download options
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+## How to Use
+
+1. **Upload an Image:**
+   - Drag and drop an image onto the application
+   - Or click the file input to select an image
+
+2. **Select Color Palette:**
+   - Choose from 64, 16, 8, or 2 colors
+   - Each palette offers different color quantization options
+
+3. **Set Output Size:**
+   - Percentage Mode:
+     - Enter original dimensions
+     - Enter target dimensions
+     - The scale percentage will be automatically calculated
+   - Pixel Mode:
+     - Directly specify width and height in pixels
+
+4. **Convert and Download:**
+   - Click "Convert All" to process the image
+   - View all four dithering results simultaneously
+   - Use individual download buttons to save results as PNG
+
+## Installation
+
+```bash
+# Clone the repository
+git clone [repository-url]
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm run dev
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+## Development
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+This project is built with:
+- React
+- TypeScript
+- Vite
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
-```
+The core dithering algorithms are implemented in pure JavaScript/TypeScript with no external image processing dependencies.
