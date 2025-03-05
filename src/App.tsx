@@ -11,20 +11,20 @@ type DitherAlgorithm = 'floyd' | 'ordered' | 'atkinson' | 'random';
 type ScaleMode = 'percent' | 'pixel';
 
 function App() {
-  // 元画像の保持用
+  // Reference for storing the original image
   const originalImageRef = useRef<HTMLImageElement | null>(null);
-  // ファイル情報、パレット、スケール指定の状態
+  // State for file info, palette, and scale settings
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [selectedPalette, setSelectedPalette] = useState<'64' | '2'>('64');
-  // スケールモード：'percent'（%指定）か 'pixel'（px指定）
+  // Scale mode: 'percent' (percentage) or 'pixel' (px)
   const [scaleMode, setScaleMode] = useState<ScaleMode>('percent');
-  // percent 指定の場合の値（例: "100"）
+  // Value for percent specification (e.g., "100")
   const [scalePercent, setScalePercent] = useState<string>("100");
-  // pixel 指定の場合の幅・高さ（空の場合は元サイズを使用）
+  // Width and height for pixel specification (empty to use original size)
   const [targetWidth, setTargetWidth] = useState<string>("");
   const [targetHeight, setTargetHeight] = useState<string>("");
 
-  // 4 つのアルゴリズムそれぞれの結果表示用 canvas の ref
+  // Canvas refs for displaying results of 4 algorithms
   const canvasRefs = {
     floyd: useRef<HTMLCanvasElement>(null),
     ordered: useRef<HTMLCanvasElement>(null),
@@ -32,7 +32,7 @@ function App() {
     random: useRef<HTMLCanvasElement>(null),
   };
 
-  // 64 色パレットと黒白パレット
+  // 64-color palette and black & white palette
   const fullPalette64: RGB[] = [
     { r: 0,   g: 0,   b: 0 },   { r: 0,   g: 0,   b: 85 },  { r: 0,   g: 0,   b: 170 }, { r: 0,   g: 0,   b: 255 },
     { r: 0,   g: 85,  b: 0 },   { r: 0,   g: 85,  b: 85 },  { r: 0,   g: 85,  b: 170 }, { r: 0,   g: 85,  b: 255 },
@@ -60,7 +60,7 @@ function App() {
     return selectedPalette === '64' ? fullPalette64 : palette2;
   };
 
-  // 共通の「最も近い色を探す」関数
+  // Common function for finding the nearest color
   const findNearestColor = (r: number, g: number, b: number, palette: RGB[]): RGB => {
     let minDiff = Infinity;
     let nearest = palette[0];
@@ -74,7 +74,7 @@ function App() {
     return nearest;
   };
 
-  // Floyd–Steinberg ダイザリング
+  // Floyd–Steinberg dithering
   const floydSteinbergDitherImage = (imageData: ImageData, palette: RGB[]): ImageData => {
     const width = imageData.width;
     const height = imageData.height;
@@ -131,7 +131,7 @@ function App() {
     return imageData;
   };
 
-  // Ordered Dithering（Bayer 行列利用）
+  // Ordered Dithering (using Bayer matrix)
   const orderedDitherImage = (imageData: ImageData, palette: RGB[]): ImageData => {
     const width = imageData.width;
     const height = imageData.height;
@@ -162,7 +162,7 @@ function App() {
     return imageData;
   };
 
-  // Atkinson ダイザリング
+  // Atkinson dithering
   const atkinsonDitherImage = (imageData: ImageData, palette: RGB[]): ImageData => {
     const width = imageData.width;
     const height = imageData.height;
@@ -232,7 +232,7 @@ function App() {
     return imageData;
   };
 
-  // Random ダイザリング
+  // Random dithering
   const randomDitherImage = (imageData: ImageData, palette: RGB[]): ImageData => {
     const width = imageData.width;
     const height = imageData.height;
@@ -263,14 +263,14 @@ function App() {
 
   const algorithms: DitherAlgorithm[] = ['floyd', 'ordered', 'atkinson', 'random'];
 
-  // 画像読み込み（URL.createObjectURL 使用）
+  // Image loading (using URL.createObjectURL)
   const loadImageFile = (file: File) => {
     setImageFile(file);
     originalImageRef.current = null;
     const img = new Image();
     img.onload = function () {
       originalImageRef.current = img;
-      // サイズ指定：scaleMode に応じて計算
+      // Calculate size based on scaleMode
       let w: number, h: number;
       if (scaleMode === 'percent') {
         w = img.width * (Number(scalePercent) / 100);
@@ -290,7 +290,7 @@ function App() {
           }
         }
       });
-      // ※必要に応じて URL.revokeObjectURL(img.src) を呼び出してください
+      // Call URL.revokeObjectURL(img.src) when needed
     };
     img.src = URL.createObjectURL(file);
   };
@@ -326,17 +326,17 @@ function App() {
     }
   };
 
-  // スケールモードの切り替え
+  // Switch scale mode
   const handleScaleModeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setScaleMode(e.target.value as ScaleMode);
   };
 
-  // % 指定用の入力変更
+  // Input change for percentage specification
   const handleScalePercentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setScalePercent(e.target.value);
   };
 
-  // px 指定用の入力変更
+  // Input change for pixel specification
   const handleWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTargetWidth(e.target.value);
   };
@@ -344,7 +344,7 @@ function App() {
     setTargetHeight(e.target.value);
   };
 
-  // 一括変換ボタン押下時：各アルゴリズムで指定サイズに合わせて再描画＆変換
+  // When Convert All button is clicked: Redraw and convert with each algorithm at the specified size
   const handleConvert = () => {
     if (!originalImageRef.current) return;
     const palette = getPalette();
@@ -373,7 +373,7 @@ function App() {
     });
   };
 
-  // 各 canvas ごとのダウンロード（ファイル名はアップロードファイル名と同じ）
+  // Download for each canvas (filename matches the uploaded file name)
   const handleDownload = (alg: DitherAlgorithm) => {
     const canvas = canvasRefs[alg].current;
     if (!canvas) return;
@@ -394,19 +394,19 @@ function App() {
       onDrop={handleDrop}
       style={{ minHeight: '100vh', padding: '20px' }}
     >
-      <h1>画像ダイザリング一括変換ツール</h1>
+      <h1>Image Dithering Batch Converter</h1>
       <div>
         <input type="file" accept="image/*" onChange={handleFileChange} />
       </div>
       <div>
-        <label>パレット選択: </label>
+        <label>Palette Selection: </label>
         <select value={selectedPalette} onChange={handlePaletteChange}>
-          <option value="64">64色</option>
-          <option value="2">2色 (黒白)</option>
+          <option value="64">64 Colors</option>
+          <option value="2">2 Colors (Black & White)</option>
         </select>
       </div>
       <div style={{ marginTop: '10px' }}>
-        <p>サイズ指定モード：</p>
+        <p>Size Specification Mode:</p>
         <label>
           <input
             type="radio"
@@ -415,7 +415,7 @@ function App() {
             checked={scaleMode === 'percent'}
             onChange={handleScaleModeChange}
           />
-          拡大縮小 (%)
+          Scale (%)
         </label>
         <label style={{ marginLeft: '20px' }}>
           <input
@@ -425,24 +425,24 @@ function App() {
             checked={scaleMode === 'pixel'}
             onChange={handleScaleModeChange}
           />
-          幅・高さ (px)
+          Width & Height (px)
         </label>
       </div>
       {scaleMode === 'percent' ? (
         <div>
-          <label>拡大縮小 (%): </label>
-          <input type="number" value={scalePercent} onChange={handleScalePercentChange} placeholder="例: 100" />
+          <label>Scale (%): </label>
+          <input type="number" value={scalePercent} onChange={handleScalePercentChange} placeholder="e.g. 100" />
         </div>
       ) : (
         <div>
-          <label>幅 (px): </label>
-          <input type="number" value={targetWidth} onChange={handleWidthChange} placeholder="例: 260" />
-          <label style={{ marginLeft: '10px' }}>高さ (px): </label>
-          <input type="number" value={targetHeight} onChange={handleHeightChange} placeholder="例: 260" />
+          <label>Width (px): </label>
+          <input type="number" value={targetWidth} onChange={handleWidthChange} placeholder="e.g. 260" />
+          <label style={{ marginLeft: '10px' }}>Height (px): </label>
+          <input type="number" value={targetHeight} onChange={handleHeightChange} placeholder="e.g. 260" />
         </div>
       )}
       <div style={{ marginTop: '10px' }}>
-        <button onClick={handleConvert}>一括変換</button>
+        <button onClick={handleConvert}>Convert All</button>
       </div>
       {imageFile && (
         <div style={{ display: 'flex', gap: '20px', marginTop: '20px' }}>
@@ -451,7 +451,7 @@ function App() {
               <p>{alg}</p>
               <canvas ref={canvasRefs[alg]} style={{ border: '1px solid #ccc' }}></canvas>
               <div>
-                <button onClick={() => handleDownload(alg)}>ダウンロード</button>
+                <button onClick={() => handleDownload(alg)}>Download</button>
               </div>
             </div>
           ))}
