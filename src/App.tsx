@@ -521,7 +521,6 @@ function App() {
               onChange={handleScalePercentChange}
               placeholder="e.g. 100"
               readOnly
-              // style={{ backgroundColor: '#f0f0f0' }}
             />
           </div>
         </div>
