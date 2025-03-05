@@ -23,6 +23,12 @@ function App() {
   // Width and height for pixel specification (empty to use original size)
   const [targetWidth, setTargetWidth] = useState<string>("");
   const [targetHeight, setTargetHeight] = useState<string>("");
+  // Original size inputs
+  const [originalWidth, setOriginalWidth] = useState<string>("");
+  const [originalHeight, setOriginalHeight] = useState<string>("");
+  // Target size inputs
+  const [desiredWidth, setDesiredWidth] = useState<string>("");
+  const [desiredHeight, setDesiredHeight] = useState<string>("");
 
   // Canvas refs for displaying results of 4 algorithms
   const canvasRefs = {
@@ -263,6 +269,44 @@ function App() {
 
   const algorithms: DitherAlgorithm[] = ['floyd', 'ordered', 'atkinson', 'random'];
 
+  // Calculate scale percentage based on original and desired sizes
+  const calculateScale = (origW: string, origH: string, desiredW: string, desiredH: string): string => {
+    if (!origW || !origH || !desiredW || !desiredH) return "100";
+    const oW = parseFloat(origW);
+    const oH = parseFloat(origH);
+    const dW = parseFloat(desiredW);
+    const dH = parseFloat(desiredH);
+    if (isNaN(oW) || isNaN(oH) || isNaN(dW) || isNaN(dH)) return "100";
+    const scaleW = (dW / oW) * 100;
+    const scaleH = (dH / oH) * 100;
+    return Math.min(scaleW, scaleH).toFixed(2);
+  };
+
+  // Handle size input changes
+  const handleOriginalWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setOriginalWidth(e.target.value);
+    const newScale = calculateScale(e.target.value, originalHeight, desiredWidth, desiredHeight);
+    setScalePercent(newScale);
+  };
+
+  const handleOriginalHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setOriginalHeight(e.target.value);
+    const newScale = calculateScale(originalWidth, e.target.value, desiredWidth, desiredHeight);
+    setScalePercent(newScale);
+  };
+
+  const handleDesiredWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDesiredWidth(e.target.value);
+    const newScale = calculateScale(originalWidth, originalHeight, e.target.value, desiredHeight);
+    setScalePercent(newScale);
+  };
+
+  const handleDesiredHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDesiredHeight(e.target.value);
+    const newScale = calculateScale(originalWidth, originalHeight, desiredWidth, e.target.value);
+    setScalePercent(newScale);
+  };
+
   // Image loading (using URL.createObjectURL)
   const loadImageFile = (file: File) => {
     setImageFile(file);
@@ -270,6 +314,9 @@ function App() {
     const img = new Image();
     img.onload = function () {
       originalImageRef.current = img;
+      // Set original size
+      setOriginalWidth(img.width.toString());
+      setOriginalHeight(img.height.toString());
       // Calculate size based on scaleMode
       let w: number, h: number;
       if (scaleMode === 'percent') {
@@ -430,8 +477,53 @@ function App() {
       </div>
       {scaleMode === 'percent' ? (
         <div>
-          <label>Scale (%): </label>
-          <input type="number" value={scalePercent} onChange={handleScalePercentChange} placeholder="e.g. 100" />
+          <div style={{ marginBottom: '10px' }}>
+            <label>Original Size: </label>
+            <input
+              type="number"
+              value={originalWidth}
+              onChange={handleOriginalWidthChange}
+              placeholder="Width"
+              style={{ width: '80px', marginRight: '10px' }}
+            />
+            <span>x</span>
+            <input
+              type="number"
+              value={originalHeight}
+              onChange={handleOriginalHeightChange}
+              placeholder="Height"
+              style={{ width: '80px', marginLeft: '10px' }}
+            />
+          </div>
+          <div style={{ marginBottom: '10px' }}>
+            <label>Target Size: </label>
+            <input
+              type="number"
+              value={desiredWidth}
+              onChange={handleDesiredWidthChange}
+              placeholder="Width"
+              style={{ width: '80px', marginRight: '10px' }}
+            />
+            <span>x</span>
+            <input
+              type="number"
+              value={desiredHeight}
+              onChange={handleDesiredHeightChange}
+              placeholder="Height"
+              style={{ width: '80px', marginLeft: '10px' }}
+            />
+          </div>
+          <div>
+            <label>Scale (%): </label>
+            <input
+              type="number"
+              value={scalePercent}
+              onChange={handleScalePercentChange}
+              placeholder="e.g. 100"
+              readOnly
+              // style={{ backgroundColor: '#f0f0f0' }}
+            />
+          </div>
         </div>
       ) : (
         <div>
