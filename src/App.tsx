@@ -15,7 +15,7 @@ function App() {
   const originalImageRef = useRef<HTMLImageElement | null>(null);
   // State for file info, palette, and scale settings
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [selectedPalette, setSelectedPalette] = useState<'64' | '2'>('64');
+  const [selectedPalette, setSelectedPalette] = useState<'64' | '16' | '8' | '2'>('64');
   // Scale mode: 'percent' (percentage) or 'pixel' (px)
   const [scaleMode, setScaleMode] = useState<ScaleMode>('percent');
   // Value for percent specification (e.g., "100")
@@ -57,13 +57,55 @@ function App() {
     { r: 255, g: 170, b: 0 },   { r: 255, g: 170, b: 85 },  { r: 255, g: 170, b: 170 }, { r: 255, g: 170, b: 255 },
     { r: 255, g: 255, b: 0 },   { r: 255, g: 255, b: 85 },  { r: 255, g: 255, b: 170 }, { r: 255, g: 255, b: 255 },
   ];
+
+  // 16-color palette (as specified)
+  const palette16: RGB[] = [
+    { r: 0,   g: 0,   b: 0 },   // 0x000000
+    { r: 0,   g: 0,   b: 255 }, // 0x0000ff
+    { r: 0,   g: 170, b: 0 },   // 0x00aa00
+    { r: 0,   g: 170, b: 255 }, // 0x00aaff
+    { r: 0,   g: 255, b: 0 },   // 0x00ff00
+    { r: 85,  g: 0,   b: 170 }, // 0x5500aa
+    { r: 85,  g: 85,  b: 85 },  // 0x555555
+    { r: 170, g: 0,   b: 0 },   // 0xaa0000
+    { r: 170, g: 170, b: 170 }, // 0xaaaaaa
+    { r: 255, g: 0,   b: 0 },   // 0xff0000
+    { r: 255, g: 0,   b: 255 }, // 0xff00ff
+    { r: 255, g: 85,  b: 0 },   // 0xff5500
+    { r: 255, g: 170, b: 0 },   // 0xffaa00
+    { r: 255, g: 255, b: 255 }, // 0xffffff
+  ];
+
+  // 8-color palette (as specified)
+  const palette8: RGB[] = [
+    { r: 0,   g: 0,   b: 0 },   // 0x000000
+    { r: 0,   g: 0,   b: 255 }, // 0x0000ff
+    { r: 0,   g: 255, b: 0 },   // 0x00ff00
+    { r: 0,   g: 255, b: 255 }, // 0x00ffff
+    { r: 255, g: 0,   b: 0 },   // 0xff0000
+    { r: 255, g: 0,   b: 255 }, // 0xff00ff
+    { r: 255, g: 255, b: 0 },   // 0xffff00
+    { r: 255, g: 255, b: 255 }, // 0xffffff
+  ];
+
   const palette2: RGB[] = [
     { r: 0, g: 0, b: 0 },
     { r: 255, g: 255, b: 255 }
   ];
 
   const getPalette = (): RGB[] => {
-    return selectedPalette === '64' ? fullPalette64 : palette2;
+    switch (selectedPalette) {
+      case '64':
+        return fullPalette64;
+      case '16':
+        return palette16;
+      case '8':
+        return palette8;
+      case '2':
+        return palette2;
+      default:
+        return fullPalette64;
+    }
   };
 
   // Common function for finding the nearest color
@@ -368,7 +410,7 @@ function App() {
 
   const handlePaletteChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    if (value === '64' || value === '2') {
+    if (value === '64' || value === '16' || value === '8' || value === '2') {
       setSelectedPalette(value);
     }
   };
@@ -449,6 +491,8 @@ function App() {
         <label>Palette Selection: </label>
         <select value={selectedPalette} onChange={handlePaletteChange}>
           <option value="64">64 Colors</option>
+          <option value="16">16 Colors</option>
+          <option value="8">8 Colors</option>
           <option value="2">2 Colors (Black & White)</option>
         </select>
       </div>
